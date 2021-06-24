@@ -23,8 +23,8 @@ public class SwiftFlutterMicrosoftAuthenticationPlugin: NSObject, FlutterPlugin 
     let msalView = ViewController()
     msalView.onInit(clientId: clientId, scopes: scopes, authority: authority, flutterResult: result)
 
-    if(call.method == "acquireTokenInteractively") {
-        msalView.acquireTokenInteractively(flutterResult: result)
+    if(call.method == "acquireLoginIds") {
+        msalView.acquireLoginIds(flutterResult: result)
     } else if(call.method == "acquireTokenSilently") {
         msalView.acquireTokenSilently(flutterResult: result)
     } else if(call.method == "signOut") {
@@ -104,7 +104,7 @@ extension ViewController {
 
 extension ViewController {
 
-    func acquireTokenInteractively(flutterResult: @escaping FlutterResult) {
+    func acquireLoginIds(flutterResult: @escaping FlutterResult) {
 
         guard let applicationContext = self.applicationContext else { return }
         guard let webViewParameters = self.webViewParamaters else { return }
@@ -113,7 +113,6 @@ extension ViewController {
         parameters.promptType = .selectAccount;
 
         applicationContext.acquireToken(with: parameters) { (result, error) in
-
             if let error = error {
                 flutterResult(FlutterError(code: "AUTH_ERROR", message: "Could not acquire token", details: nil))
                 print("Could not acquire token: \(error)")
@@ -128,7 +127,14 @@ extension ViewController {
 
             self.accessToken = result.accessToken
             print("Access token is \(self.accessToken)")
-            flutterResult(self.accessToken)
+
+            let dictionaryResult: [String: Any] = [
+                "idToken": result.idToken ?? "",
+                "objectId": result.account.accountClaims?["oid"] ?? ""
+            ]
+
+            // We need to return ID Token in order to obtain refresh token in flutter app
+            flutterResult(dictionaryResult)
         }
 
     }
@@ -154,7 +160,7 @@ extension ViewController {
 
         if(currentAccount == nil) {
             DispatchQueue.main.async {
-                self.acquireTokenInteractively(flutterResult: flutterResult)
+                self.acquireLoginIds(flutterResult: flutterResult)
             }
             return
         }
@@ -176,7 +182,7 @@ extension ViewController {
                     if (nsError.code == MSALError.interactionRequired.rawValue) {
 
                         DispatchQueue.main.async {
-                            self.acquireTokenInteractively(flutterResult: flutterResult)
+                            self.acquireLoginIds(flutterResult: flutterResult)
                         }
                         return
                     }
@@ -193,9 +199,11 @@ extension ViewController {
             }
 
             self.accessToken = result.accessToken
-            print("Refreshed Access token is \(self.accessToken)")
+            print("Access token is \(self.accessToken)")
+            //flutterResult(self.accessToken)
 
-            flutterResult(self.accessToken)
+            // We need to return ID Token in order to obtain refresh token in flutter app
+            flutterResult(result.idToken ?? "")
         }
     }
 

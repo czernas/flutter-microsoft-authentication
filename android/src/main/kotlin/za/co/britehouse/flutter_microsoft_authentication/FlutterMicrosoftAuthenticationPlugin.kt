@@ -63,11 +63,11 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
     }
 
     when(call.method){
-      "acquireTokenInteractively" -> acquireTokenInteractively(scopes, authority, result)
+      "acquireLoginIds" -> acquireLoginIds(scopes, authority, result)
       "acquireTokenSilently" -> acquireTokenSilently(scopes, authority, result)
       "loadAccount" -> loadAccount(result)
       "signOut" -> signOut(result)
-      "init" -> initPlugin(configPath)
+      "init" -> initPlugin(configPath, result)
       else -> result.notImplemented()
     }
 
@@ -103,11 +103,11 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
     }
   }
 
-  private fun initPlugin(assetPath: String) {
-    createSingleAccountPublicClientApplication(assetPath)
+  private fun initPlugin(assetPath: String, result: Result) {
+    createSingleAccountPublicClientApplication(assetPath, result)
   }
 
-  private fun createSingleAccountPublicClientApplication(assetPath: String) {
+  private fun createSingleAccountPublicClientApplication(assetPath: String, result: Result) {
     val configFile = getConfigFile(assetPath)
     val context: Context = mainActivity.applicationContext
 
@@ -123,15 +123,17 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
                  */
                 Log.d(TAG, "INITIALIZED")
                 mSingleAccountApp = application
+                result.success(null)
               }
 
               override fun onError(exception: MsalException) {
-                Log.e(TAG, exception.message)
+                Log.e(TAG, exception.message ?: "")
+                result.error(exception.errorCode, exception.message, null)
               }
             })
   }
 
-  private fun acquireTokenInteractively(scopes: Array<String>, authority: String, result: Result) {
+  private fun acquireLoginIds(scopes: Array<String>, authority: String, result: Result) {
     if (mSingleAccountApp == null) {
       result.error("MsalClientException", "Account not initialized", null)
     }
@@ -158,7 +160,7 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
       }
 
       override fun onError(exception: MsalException) {
-        Log.e(TAG, exception.message)
+        Log.e(TAG, exception.message ?: "")
         result.error("ERROR", exception.errorCode, null)
       }
     })
@@ -173,8 +175,17 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
         /* Successfully got a token, use it to call a protected resource - MSGraph */
         Log.d(TAG, "Successfully authenticated")
         Log.d(TAG, "ID Token: " + authenticationResult.account.claims!!["id_token"])
-        val accessToken = authenticationResult.accessToken
-        result.success(accessToken)
+        //val accessToken = authenticationResult.accessToken
+
+        // We need to return ID Token in order to obtain refresh token in flutter app
+        val idToken = authenticationResult.account.idToken
+        val objectId = authenticationResult.account.claims!!["oid"]
+
+        var hashMap = HashMap<String, Any>()
+        hashMap.put("idToken", idToken ?: "")
+        hashMap.put("objectId", objectId ?: "")
+
+        result.success(hashMap)
       }
 
       override fun onError(exception: MsalException) {
@@ -249,6 +260,8 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
       override fun onAccountLoaded(activeAccount: IAccount?) {
         if (activeAccount != null) {
           result.success(activeAccount.username)
+        } else {
+          result.success(null)
         }
       }
 
@@ -261,7 +274,7 @@ class FlutterMicrosoftAuthenticationPlugin: MethodCallHandler {
       }
 
       override fun onError(exception: MsalException) {
-        Log.e(TAG, exception.message)
+        Log.e(TAG, exception.message ?: "")
         result.error("MsalException", exception.message, null)
       }
     })
